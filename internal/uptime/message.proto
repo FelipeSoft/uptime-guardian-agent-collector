@@ -10,26 +10,12 @@ message UptimeRequest {
 	string proxy_server = 1;
 	google.protobuf.Timestamp sent_time = 2;
 	string ipv4 = 3;
-	oneof optional_ipv6 {
-		string ipv6 = 4;
-	}
-	string mac_addr = 5;
-	oneof optional_hostname {
-		string hostname = 6;
-	}
 }
 
 message UptimeResponse {
 	string proxy_server = 1;
 	google.protobuf.Timestamp sent_time = 2;
 	string ipv4 = 3;
-	oneof optional_ipv6 {
-		string ipv6 = 4;
-	}
-	string mac_addr = 5;
-	oneof optional_hostname {
-		string hostname = 6;
-	}
 }
 
 service UptimeService {

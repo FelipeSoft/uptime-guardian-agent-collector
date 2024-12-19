@@ -3,14 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
+	"time"
 	"github.com/FelipeSoft/uptime-guardian-agent-collector/internal/infrastructure/network"
 	pb "github.com/FelipeSoft/uptime-guardian-agent-collector/internal/uptime/v1/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"log"
-	"os"
-	"time"
 )
 
 func main() {
@@ -45,22 +45,44 @@ func main() {
 	}
 	defer conn.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
 	networkIPv4, err := network.GetLocalIPv4InSubnet(subnet)
 	if err != nil {
 		log.Printf("error on search network interface adapters: %s", err.Error())
 	}
 
+	if len(networkIPv4) == 0 {
+		log.Printf("no IPv4 addresses found in subnet: %s", subnet)
+	}
+
+	ipv4 := networkIPv4[0].String()
+
 	client := pb.NewUptimeServiceClient(conn)
-	sentTime := timestamppb.New(time.Now())
-	client.SendCollectedData(ctx, &pb.UptimeRequest{
-		ProxyServer:      proxyAddr,
-		SentTime:         sentTime,
-		Ipv4:             string(networkIPv4[0]),
-		MacAddr:          "testing",
-		OptionalHostname: &pb.UptimeRequest_Hostname{Hostname: "felip"},
-		OptionalIpv6:     &pb.UptimeRequest_Ipv6{Ipv6: "felip"},
-	})
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+
+			sentClientTime := time.Now().UnixMilli()
+
+			res, err := client.SendCollectedData(ctx, &pb.UptimeRequest{
+				ProxyServer: proxyAddr,
+				SentTime:    timestamppb.New(time.Now()),
+				// should be put by array
+				Ipv4: ipv4,
+			})
+			if err != nil {
+				fmt.Printf("IPv4: %s \n", ipv4)
+				log.Printf("error on send gRPC request: %s", err.Error())
+			} else {
+				receivedServerTime := res.SentTime.AsTime().UnixMilli()
+				latency := receivedServerTime - sentClientTime
+				fmt.Printf("Latency: %dms \n", latency)
+			}
+			cancel()
+		}
+	}()
+
+	select {}
 }
