@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"time"
-
 	"github.com/FelipeSoft/uptime-guardian-agent-collector/internal/infrastructure/icmp"
 )
 
@@ -35,8 +33,6 @@ func main() {
 		}
 	}()
 
-	time.Sleep(5 * time.Second)
-	icmp.UpdateICMPTask(1, &icmp.Task{IpAddr: "192.168.200.152"})
 	fmt.Println("Updated Motorola Edge 30 Task IP Address!")
 
 	select {}
