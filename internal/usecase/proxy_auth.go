@@ -10,11 +10,10 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-
 	"github.com/joho/godotenv"
 )
 
-type Input struct {
+type ProxyAuthInput struct {
 	Host     string
 	Protocol string
 	Path     string
@@ -25,11 +24,11 @@ type ProxyAuthDataBody struct {
 	ProxyPassword string `json:"proxyPassword"`
 }
 
-type Output struct {
+type ProxyAuthOutput struct {
 	Token string `json:"token"`
 }
 
-func AuthProxy(input Input) (*Output, error) {
+func AuthProxy(input ProxyAuthInput) (*ProxyAuthOutput, error) {
 	godotenv.Load("./../../.env")
 	fmt.Println(os.Getenv("PROXY_ID"))
 	client := http.Client{
@@ -62,7 +61,7 @@ func AuthProxy(input Input) (*Output, error) {
 	}
 	defer res.Body.Close()
 
-	var output *Output
+	var output *ProxyAuthOutput
 	parsedResponse, err := io.ReadAll(res.Body)
 	if err != nil {
 		log.Printf("error on auth proxy body decode: %s", err.Error())
