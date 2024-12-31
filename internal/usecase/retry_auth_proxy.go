@@ -14,9 +14,10 @@ type RetryProxyAuthUseCase struct {
 	attemptsLimit     int
 	attemptDelay      time.Duration
 	refreshTokenDelay time.Duration
+	retryChannel      chan bool
 }
 
-func NewRetryProxyAuthUseCase(proxyAuthOutput *ProxyAuthOutput, wg *sync.WaitGroup, mu *sync.Mutex, attemptsLimit int, attemptDelay time.Duration, refreshTokenDelay time.Duration) *RetryProxyAuthUseCase {
+func NewRetryProxyAuthUseCase(proxyAuthOutput *ProxyAuthOutput, wg *sync.WaitGroup, mu *sync.Mutex, attemptsLimit int, attemptDelay time.Duration, refreshTokenDelay time.Duration, retryChannel chan bool) *RetryProxyAuthUseCase {
 	return &RetryProxyAuthUseCase{
 		proxyAuthOutput:   proxyAuthOutput,
 		wg:                wg,
@@ -24,12 +25,11 @@ func NewRetryProxyAuthUseCase(proxyAuthOutput *ProxyAuthOutput, wg *sync.WaitGro
 		attemptsLimit:     attemptsLimit,
 		attemptDelay:      attemptDelay,
 		refreshTokenDelay: refreshTokenDelay,
+		retryChannel:      retryChannel,
 	}
 }
 
 func (r *RetryProxyAuthUseCase) Execute() {
-	defer r.wg.Done()
-
 	for {
 		for attempt := 1; attempt < r.attemptsLimit; attempt++ {
 			log.Printf("%d of %d Proxy Authentication with WebSocket Gateway\n", attempt, r.attemptsLimit)
@@ -43,6 +43,7 @@ func (r *RetryProxyAuthUseCase) Execute() {
 				*r.proxyAuthOutput = *out
 				r.mu.Unlock()
 				log.Println("Proxy authenticated successfully.")
+				r.retryChannel <- false
 				return
 			}
 			if err != nil {

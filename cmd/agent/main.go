@@ -3,25 +3,29 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
-	"time"
 	"github.com/FelipeSoft/uptime-guardian-agent-collector/internal/infrastructure/network"
 	pb "github.com/FelipeSoft/uptime-guardian-agent-collector/internal/uptime/v1/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"log"
+	"os"
+	"time"
 )
 
 func main() {
 	var targetSubnet string
 	var targetProxyServer string
+	var targetAgentId string
 
 	fmt.Println("Describe which subnet the host belongs to (e.g. 192.168.120.1/24): ")
 	fmt.Scan(&targetSubnet)
 
 	fmt.Println("Describe the Proxy Server IPv4 Address: ")
 	fmt.Scan(&targetProxyServer)
+
+	fmt.Println("Describe the Agent ID: ")
+	fmt.Scan(&targetAgentId)
 
 	os.Setenv("PROXY_SERVER", targetProxyServer)
 	os.Setenv("SUBNET", targetSubnet)
@@ -67,9 +71,10 @@ func main() {
 			sentClientTime := time.Now().UnixMilli()
 
 			res, err := client.SendCollectedData(ctx, &pb.UptimeRequest{
-				ProxyServer: proxyAddr,
-				SentTime:    timestamppb.New(time.Now()),
-				// should be put by array
+				HostId:   targetAgentId,
+				SentTime: timestamppb.New(time.Now()),
+
+				// should be put by array if have other IPs
 				Ipv4: ipv4,
 			})
 			if err != nil {

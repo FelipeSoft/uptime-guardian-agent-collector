@@ -32,15 +32,28 @@ func main() {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
+	retryChannel := make(chan bool)
 	proxyAuthOutput := &usecase.ProxyAuthOutput{}
-	retryAuthProxy := usecase.NewRetryProxyAuthUseCase(proxyAuthOutput, &wg, &mu, attemptsLimit, attemptDelay, refreshTokenDelay)
+	retryAuthProxy := usecase.NewRetryProxyAuthUseCase(proxyAuthOutput, &wg, &mu, attemptsLimit, attemptDelay, refreshTokenDelay, retryChannel)
+
+	go func() {
+		for retry := range retryChannel {
+			if retry {
+				log.Println("retry for authentication...")
+				retryAuthProxy.Execute()
+			}
+		}
+	}()
 
 	wg.Add(1)
-	go retryAuthProxy.Execute()
+	go func() {
+		defer wg.Done()
+		retryAuthProxy.Execute()
+	}()
 	wg.Wait()
 
 	mu.Lock()
-	if proxyAuthOutput == nil || proxyAuthOutput.Token == "" {
+	if proxyAuthOutput.Token == "" {
 		mu.Unlock()
 		log.Fatal("Failed to authenticate the proxy. Token is unavailable.")
 	}
@@ -62,12 +75,12 @@ func main() {
 		log.Fatalf("Failed on establishing connection with WebSocket Gateway.")
 	}
 
-	if err := icmp.AddICMPTask(1, &icmp.Task{IpAddr: "192.168.0.6"}); err != nil {
+	if err := icmp.AddICMPTask(1, &icmp.Task{IpAddr: "192.168.0.1"}); err != nil {
 		log.Fatalf("Failed to add task 1: %v", err)
 	}
 
 	go func() {
-		if err := icmp.ICMPScheduler(); err != nil {
+		if err := icmp.ICMPScheduler(ws, retryChannel); err != nil {
 			log.Fatalf("Scheduler error: %v", err)
 		}
 	}()
@@ -78,6 +91,7 @@ func main() {
 			err := websocket.Message.Receive(ws, &message)
 			if err != nil {
 				log.Printf("Error on read message from WebSocket Gateway: %s", err)
+				break
 			}
 			fmt.Println(message)
 		}
@@ -93,9 +107,9 @@ func main() {
 	grpcServer := grpc.NewServer()
 	pb.RegisterUptimeServiceServer(grpcServer, &uptime.UptimeService{})
 
-	log.Println("gRPC server is running on port 50051")
+	log.Printf("\n gRPC server is available on %s", proxyUrl)
 	if err = grpcServer.Serve(lis); err != nil {
-		log.Fatalf("listening on TCP 50051 gRPC port failed: %s", err.Error())
+		log.Fatalf("gRPC server listening failed on %s caused by error: %s", proxyUrl, err.Error())
 	}
 
 	select {}

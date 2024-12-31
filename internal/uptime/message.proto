@@ -7,13 +7,13 @@ option go_package = "v1/proto";
 import "google/protobuf/timestamp.proto";
 
 message UptimeRequest {
-	string proxy_server = 1;
+	string host_id = 1;
 	google.protobuf.Timestamp sent_time = 2;
 	string ipv4 = 3;
 }
 
 message UptimeResponse {
-	string proxy_server = 1;
+	string host_id = 1;
 	google.protobuf.Timestamp sent_time = 2;
 	string ipv4 = 3;
 }
