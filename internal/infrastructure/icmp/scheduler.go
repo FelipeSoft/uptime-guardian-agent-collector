@@ -3,6 +3,7 @@ package icmp
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"sync"
@@ -44,47 +45,42 @@ var (
 )
 
 func ICMPScheduler(ws *websocket.Conn, ch chan bool) error {
-	for {
-		mu.Lock()
-		for key, task := range tasks {
-			// fmt.Printf("ICMP Task ID: %d; IP Address: %s \n", key, task.IpAddr)
-			go func(key int, task *Task) {
-				metric, err := icmpTask(task.IpAddr)
-				if err != nil {
-					// emit Error Event
-					// messages:
-					// message type: destination unreachable; read ip4 0.0.0.0 i/o timeout
-					fmt.Printf("Error in ICMP Task ID %d for IP %s: %v\n", key, task.IpAddr, err)
-				} else {
-					// emit Success Event
-					// fmt.Printf("ICMP Task ID: %d IP %s; Time: %d completed successfully.\n", key, metric.IpAddr, metric.Time)
-
-					// Write a message with other keys about remote network and current assigned IP/IPs for validation on WebSocket Gateway (OrchestratorMessage)
-					jsonMetric, err := json.Marshal(&ICMPMetricMessage{
-						MessageType:   "icmp",
-						Timestamp:     time.Duration(time.Now().UnixMilli()),
-						TimestampType: "created_time",
-						Unit:          "host",
-						Identifier:    1,
-						Data: &ICMPLatencyMetric{
-							Metric:  "ms",
-							Latency: metric.Time,
-						},
-					})
-					if err != nil {
-						fmt.Printf("Error on metric json marshal process: %s", err.Error())
-					}
-					_, err = ws.Write([]byte(jsonMetric))
-					if err != nil {
-						ch <- true
-						fmt.Printf("Error on receive websocket message: %s", err.Error())
-					}
-				}
-			}(key, task)
-		}
-		mu.Unlock()
-		time.Sleep(1 * time.Second)
-	}
+    for {
+        mu.Lock()
+        for key, task := range tasks {
+            go func(key int, task *Task) {
+                log.Printf("Starting ICMP task ID %d for IP %s", key, task.IpAddr)
+                metric, err := icmpTask(task.IpAddr)
+                if err != nil {
+                    log.Printf("Error in ICMP Task ID %d: %v", key, err)
+                } else {
+                    log.Printf("ICMP Task ID %d completed: %+v", key, metric)
+                    jsonMetric, err := json.Marshal(&ICMPMetricMessage{
+                        MessageType:   "icmp",
+                        Timestamp:     time.Duration(time.Now().UnixMilli()),
+                        TimestampType: "created_time",
+                        Unit:          "host",
+                        Identifier:    uint(key),
+                        Data: &ICMPLatencyMetric{
+                            Metric:  "ms",
+                            Latency: metric.Time,
+                        },
+                    })
+                    if err != nil {
+                        log.Printf("Error marshaling JSON for task ID %d: %v", key, err)
+                        return
+                    }
+                    _, err = ws.Write([]byte(jsonMetric))
+                    if err != nil {
+                        log.Printf("Error sending WebSocket message for task ID %d: %v", key, err)
+                        ch <- true
+                    }
+                }
+            }(key, task)
+        }
+        mu.Unlock()
+        time.Sleep(1 * time.Second)
+    }
 }
 
 func AddICMPTask(key int, task *Task) error {

@@ -40,18 +40,27 @@ func main() {
 	var wg sync.WaitGroup
 
 	retryChannel := make(chan bool)
+	grpcMessagesChannel := make(chan []byte, 10)
+
 	proxyAuthOutput := &usecase.ProxyAuthOutput{}
 	retryAuthProxy := usecase.NewRetryProxyAuthUseCase(proxyAuthOutput, &wg, &mu, attemptsLimit, attemptDelay, refreshTokenDelay, retryChannel)
 
 	go func() {
-		for retry := range retryChannel {
-			if retry {
-				log.Println("retry for authentication...")
-				retryAuthProxy.Execute()
+		for {
+			select {
+			case retry, ok := <-retryChannel:
+				if !ok {
+					retryAuthProxy.Execute()
+					return
+				}
+				if retry {
+					log.Println("retry for authentication...")
+					retryAuthProxy.Execute()
+				}
 			}
 		}
 	}()
-
+	
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -90,6 +99,10 @@ func main() {
 		log.Fatalf("Failed to add task 1: %v", err)
 	}
 
+	if err := icmp.AddICMPTask(2, &icmp.Task{IpAddr: "192.168.0.7"}); err != nil {
+		log.Fatalf("Failed to add task 1: %v", err)
+	}
+
 	go func() {
 		if err := icmp.ICMPScheduler(ws, retryChannel); err != nil {
 			log.Printf("ICMP scheduler error: %v", err)
@@ -102,11 +115,21 @@ func main() {
 			var message string
 			err := websocket.Message.Receive(ws, &message)
 			if err != nil {
-				log.Printf("WebSocket error: %v. Attempting reconnect...", err)
+				log.Fatalf("WebSocket error: %v. Attempting reconnect...", err)
 				retryChannel <- true
 				break
 			}
 			fmt.Println(message)
+		}
+	}()
+
+	go func() {
+		for msg := range grpcMessagesChannel {
+			_, err := ws.Write([]byte(msg))
+			if err != nil {
+				log.Printf("Error on send collected metrics from agent: %v", err)
+				retryChannel <- true
+			}
 		}
 	}()
 
@@ -120,7 +143,7 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 
-	uptimeService := uptime.NewUptimeService(ws, retryChannel)
+	uptimeService := uptime.NewUptimeService(ws, grpcMessagesChannel)
 	pb.RegisterUptimeServiceServer(grpcServer, uptimeService)
 
 	log.Printf("gRPC server is available on %s", proxyUrl)

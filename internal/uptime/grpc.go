@@ -12,7 +12,7 @@ import (
 type UptimeService struct {
 	pb.UnimplementedUptimeServiceServer
 	ws *websocket.Conn
-	ch chan bool
+	ch chan []byte
 }
 
 type AgentMetricMessage struct {
@@ -29,7 +29,7 @@ type AgentLatencyMetric struct {
 	Latency int64  `json:"latency"`
 }
 
-func NewUptimeService(ws *websocket.Conn, ch chan bool) *UptimeService {
+func NewUptimeService(ws *websocket.Conn, ch chan []byte) *UptimeService {
 	return &UptimeService{
 		ws: ws,
 		ch: ch,
@@ -62,10 +62,7 @@ func (s *UptimeService) SendCollectedData(ctx context.Context, message *pb.Uptim
 		return nil, err
 	}
 
-	_, err = s.ws.Write([]byte(msg))
-	if err != nil {
-		return nil, err
-	}
+	s.ch <- msg
 
 	return &pb.UptimeResponse{
 		SentTime: message.SentTime,
