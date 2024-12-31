@@ -29,7 +29,7 @@ func NewRetryProxyAuthUseCase(proxyAuthOutput *ProxyAuthOutput, wg *sync.WaitGro
 	}
 }
 
-func (r *RetryProxyAuthUseCase) Execute() {
+func (r *RetryProxyAuthUseCase) Execute() error {
 	for {
 		for attempt := 1; attempt < r.attemptsLimit; attempt++ {
 			log.Printf("%d of %d Proxy Authentication with WebSocket Gateway\n", attempt, r.attemptsLimit)
@@ -38,18 +38,16 @@ func (r *RetryProxyAuthUseCase) Execute() {
 				Protocol: "http",
 				Path:     "/auth/proxy",
 			})
+			if err != nil {
+				return err
+			}
 			if err == nil && out != nil && out.Token != "" {
 				r.mu.Lock()
 				*r.proxyAuthOutput = *out
 				r.mu.Unlock()
 				log.Println("Proxy authenticated successfully.")
 				r.retryChannel <- false
-				return
-			}
-			if err != nil {
-				log.Printf("Error on proxy auth (attempt %d): %s", attempt, err.Error())
-			} else {
-				log.Println("Proxy authentication failed. Retrying...")
+				return nil
 			}
 			time.Sleep(r.attemptDelay)
 		}

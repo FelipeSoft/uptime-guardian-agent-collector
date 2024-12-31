@@ -14,6 +14,7 @@ import (
 )
 
 type ICMPMetricMessage struct {
+	MessageType   string             `json:"messageType"`
 	Timestamp     time.Duration      `json:"timestamp"`
 	TimestampType string             `json:"timestampType"`
 	Unit          string             `json:"unit"`
@@ -57,9 +58,10 @@ func ICMPScheduler(ws *websocket.Conn, ch chan bool) error {
 				} else {
 					// emit Success Event
 					// fmt.Printf("ICMP Task ID: %d IP %s; Time: %d completed successfully.\n", key, metric.IpAddr, metric.Time)
-					
+
 					// Write a message with other keys about remote network and current assigned IP/IPs for validation on WebSocket Gateway (OrchestratorMessage)
 					jsonMetric, err := json.Marshal(&ICMPMetricMessage{
+						MessageType:   "icmp",
 						Timestamp:     time.Duration(time.Now().UnixMilli()),
 						TimestampType: "created_time",
 						Unit:          "host",

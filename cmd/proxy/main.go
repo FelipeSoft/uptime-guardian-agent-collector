@@ -1,7 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
+	"net"
+	"net/url"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
+
 	"github.com/FelipeSoft/uptime-guardian-agent-collector/internal/infrastructure/icmp"
 	"github.com/FelipeSoft/uptime-guardian-agent-collector/internal/uptime"
 	pb "github.com/FelipeSoft/uptime-guardian-agent-collector/internal/uptime/v1/proto"
@@ -9,16 +19,13 @@ import (
 	"github.com/joho/godotenv"
 	"golang.org/x/net/websocket"
 	"google.golang.org/grpc"
-	"log"
-	"net"
-	"net/url"
-	"os"
-	"sync"
-	"time"
 )
 
 func main() {
 	godotenv.Load("./../../.env")
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	proxyUrl := (&url.URL{
 		Scheme: "http",
@@ -48,7 +55,10 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		retryAuthProxy.Execute()
+		if err := retryAuthProxy.Execute(); err != nil {
+			log.Printf("Error during initial proxy authentication: %v", err)
+			retryChannel <- true
+		}
 	}()
 	wg.Wait()
 
@@ -65,6 +75,7 @@ func main() {
 		Host:     os.Getenv("WEBSOCKET_GATEWAY_WS"),
 		RawQuery: fmt.Sprintf("token=%s", token),
 	}
+
 	ws, err := websocket.Dial(wsUrl.String(), "", proxyUrl)
 	if err != nil {
 		log.Fatalf("WebSocket Gateway connection failed: %s", err.Error())
@@ -81,7 +92,8 @@ func main() {
 
 	go func() {
 		if err := icmp.ICMPScheduler(ws, retryChannel); err != nil {
-			log.Fatalf("Scheduler error: %v", err)
+			log.Printf("ICMP scheduler error: %v", err)
+			retryChannel <- true
 		}
 	}()
 
@@ -90,7 +102,8 @@ func main() {
 			var message string
 			err := websocket.Message.Receive(ws, &message)
 			if err != nil {
-				log.Printf("Error on read message from WebSocket Gateway: %s", err)
+				log.Printf("WebSocket error: %v. Attempting reconnect...", err)
+				retryChannel <- true
 				break
 			}
 			fmt.Println(message)
@@ -104,13 +117,29 @@ func main() {
 		log.Fatalf("listening to gRPC failed with: %s", err.Error())
 	}
 	defer lis.Close()
-	grpcServer := grpc.NewServer()
-	pb.RegisterUptimeServiceServer(grpcServer, &uptime.UptimeService{})
 
-	log.Printf("\n gRPC server is available on %s", proxyUrl)
-	if err = grpcServer.Serve(lis); err != nil {
-		log.Fatalf("gRPC server listening failed on %s caused by error: %s", proxyUrl, err.Error())
-	}
+	grpcServer := grpc.NewServer()
+
+	uptimeService := uptime.NewUptimeService(ws, retryChannel)
+	pb.RegisterUptimeServiceServer(grpcServer, uptimeService)
+
+	log.Printf("gRPC server is available on %s", proxyUrl)
+
+	go func() {
+		log.Println("Starting gRPC server...")
+		if err := grpcServer.Serve(lis); err != nil && err != grpc.ErrServerStopped {
+			log.Fatalf("gRPC server terminated unexpectedly: %v", err)
+		}
+		log.Println("gRPC server has stopped.")
+	}()
+
+	go func() {
+		<-ctx.Done()
+		log.Println("Shutting down gracefully...")
+		grpcServer.GracefulStop()
+		log.Println("gRPC server stopped.")
+		os.Exit(0)
+	}()
 
 	select {}
 }

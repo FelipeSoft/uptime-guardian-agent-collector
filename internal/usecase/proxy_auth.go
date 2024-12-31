@@ -3,9 +3,7 @@ package usecase
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -30,7 +28,6 @@ type ProxyAuthOutput struct {
 
 func AuthProxy(input ProxyAuthInput) (*ProxyAuthOutput, error) {
 	godotenv.Load("./../../.env")
-	fmt.Println(os.Getenv("PROXY_ID"))
 	client := http.Client{
 		Transport: http.DefaultTransport,
 	}
@@ -42,29 +39,28 @@ func AuthProxy(input ProxyAuthInput) (*ProxyAuthOutput, error) {
 	proxyId, err := strconv.Atoi(os.Getenv("PROXY_ID"))
 	proxyPassword := os.Getenv("PROXY_PASSWORD")
 	if err != nil {
-		log.Printf("error on proxyId int parsing: %s", err.Error())
+		return nil, err
 	}
 	body, err := json.Marshal(&ProxyAuthDataBody{ProxyId: proxyId, ProxyPassword: proxyPassword})
-	fmt.Println(string(body))
 	if err != nil {
-		log.Printf("error on body marshal: %s", err.Error())
+		return nil, err
 	}
 	buff := bytes.NewBuffer(body)
 	req, err := http.NewRequest("POST", u.String(), buff)
 	req.Header.Set("Content-Type", "application/json")
 	if err != nil {
-		log.Printf("error on auth proxy request: %s", err.Error())
+		return nil, err
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		log.Printf("error on auth proxy response: %s", err.Error())
+		return nil, err
 	}
 	defer res.Body.Close()
 
 	var output *ProxyAuthOutput
 	parsedResponse, err := io.ReadAll(res.Body)
 	if err != nil {
-		log.Printf("error on auth proxy body decode: %s", err.Error())
+		return nil, err
 	}
 	err = json.Unmarshal(parsedResponse, &output)
 	if err != nil {

@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
+	"time"
+
 	"github.com/FelipeSoft/uptime-guardian-agent-collector/internal/infrastructure/network"
 	pb "github.com/FelipeSoft/uptime-guardian-agent-collector/internal/uptime/v1/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"log"
-	"os"
-	"time"
 )
 
 func main() {
@@ -21,7 +22,7 @@ func main() {
 	fmt.Println("Describe which subnet the host belongs to (e.g. 192.168.120.1/24): ")
 	fmt.Scan(&targetSubnet)
 
-	fmt.Println("Describe the Proxy Server IPv4 Address: ")
+	fmt.Println("Describe the Proxy Server IPv4 Address and Port (e.g., 192.168.0.4:50051): ")
 	fmt.Scan(&targetProxyServer)
 
 	fmt.Println("Describe the Agent ID: ")
@@ -42,20 +43,25 @@ func main() {
 
 	fmt.Printf("Informed PROXY_SERVER: %s \n", proxyAddr)
 	fmt.Printf("Informed SUBNET: %s \n", subnet)
+	fmt.Printf("Informed AGENT ID: %s \n", targetAgentId)
 
+	// Validate gRPC server address
+	log.Printf("Attempting to connect to gRPC server at %s", proxyAddr)
+
+	// Use grpc.Dial (updated function)
 	conn, err := grpc.NewClient(proxyAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatalf("Error on gRPC client declaring: %s", err.Error())
+		log.Fatalf("Error connecting to gRPC server: %s", err.Error())
 	}
 	defer conn.Close()
 
 	networkIPv4, err := network.GetLocalIPv4InSubnet(subnet)
 	if err != nil {
-		log.Printf("error on search network interface adapters: %s", err.Error())
+		log.Printf("Error searching network interface adapters: %s", err.Error())
 	}
 
 	if len(networkIPv4) == 0 {
-		log.Printf("no IPv4 addresses found in subnet: %s", subnet)
+		log.Fatalf("No IPv4 addresses found in subnet: %s", subnet)
 	}
 
 	ipv4 := networkIPv4[0].String()
@@ -66,7 +72,7 @@ func main() {
 		defer ticker.Stop()
 
 		for range ticker.C {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 
 			sentClientTime := time.Now().UnixMilli()
 
@@ -78,8 +84,7 @@ func main() {
 				Ipv4: ipv4,
 			})
 			if err != nil {
-				fmt.Printf("IPv4: %s \n", ipv4)
-				log.Printf("error on send gRPC request: %s", err.Error())
+				log.Printf("Error sending gRPC request: %s", err.Error())
 			} else {
 				receivedServerTime := res.SentTime.AsTime().UnixMilli()
 				latency := receivedServerTime - sentClientTime
