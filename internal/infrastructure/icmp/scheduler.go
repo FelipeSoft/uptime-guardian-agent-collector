@@ -49,12 +49,10 @@ func ICMPScheduler(ws *websocket.Conn, ch chan bool) error {
         mu.Lock()
         for key, task := range tasks {
             go func(key int, task *Task) {
-                log.Printf("Starting ICMP task ID %d for IP %s", key, task.IpAddr)
                 metric, err := icmpTask(task.IpAddr)
                 if err != nil {
                     log.Printf("Error in ICMP Task ID %d: %v", key, err)
                 } else {
-                    log.Printf("ICMP Task ID %d completed: %+v", key, metric)
                     jsonMetric, err := json.Marshal(&ICMPMetricMessage{
                         MessageType:   "icmp",
                         Timestamp:     time.Duration(time.Now().UnixMilli()),

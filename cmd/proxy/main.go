@@ -99,9 +99,9 @@ func main() {
 		log.Fatalf("Failed to add task 1: %v", err)
 	}
 
-	if err := icmp.AddICMPTask(2, &icmp.Task{IpAddr: "192.168.0.7"}); err != nil {
-		log.Fatalf("Failed to add task 1: %v", err)
-	}
+	// if err := icmp.AddICMPTask(2, &icmp.Task{IpAddr: "192.168.0.7"}); err != nil {
+	// 	log.Fatalf("Failed to add task 1: %v", err)
+	// }
 
 	go func() {
 		if err := icmp.ICMPScheduler(ws, retryChannel); err != nil {
