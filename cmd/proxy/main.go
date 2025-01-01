@@ -46,21 +46,18 @@ func main() {
 	retryAuthProxy := usecase.NewRetryProxyAuthUseCase(proxyAuthOutput, &wg, &mu, attemptsLimit, attemptDelay, refreshTokenDelay, retryChannel)
 
 	go func() {
-		for {
-			select {
-			case retry, ok := <-retryChannel:
-				if !ok {
-					retryAuthProxy.Execute()
-					return
-				}
-				if retry {
-					log.Println("retry for authentication...")
-					retryAuthProxy.Execute()
-				}
+		for retry := range retryChannel {
+			if ok := <-retryChannel; !ok {
+				retryAuthProxy.Execute()
+				return
+			}
+			if retry {
+				log.Println("retry for authentication...")
+				retryAuthProxy.Execute()
 			}
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
